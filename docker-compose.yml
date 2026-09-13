@@ -1,0 +1,60 @@
+version: '3.9'
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: ledgerlens-db
+    environment:
+      POSTGRES_USER: ledgerlens
+      POSTGRES_PASSWORD: ledgerlens_dev_password
+      POSTGRES_DB: ledgerlens
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ledgerlens"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    container_name: ledgerlens-api
+    environment:
+      DATABASE_URL: postgresql://ledgerlens:ledgerlens_dev_password@db:5432/ledgerlens
+      JWT_SECRET: your-secret-key-change-in-production
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-sk-test}
+      ENVIRONMENT: development
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./apps/api:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+    container_name: ledgerlens-web
+    environment:
+      VITE_API_URL: http://localhost:8000
+    ports:
+      - "5173:5173"
+    depends_on:
+      - api
+    volumes:
+      - ./apps/web/src:/app/src
+    command: npm run dev
+
+volumes:
+  postgres_data:
+
+networks:
+  default:
+    name: ledgerlens-network
